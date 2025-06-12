@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DATA_BIN=./dataset/fairseq/data-bin
+DATA_BIN=./dataset/fairseq
 
 CUDA_VISIBLE_DEVICES=0,1 fairseq-train \
     $DATA_BIN \
