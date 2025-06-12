@@ -2,6 +2,10 @@
 CUDA_VISIBLE_DEVICES=0 fairseq-train \
     ./dataset/fairseq \
     --arch transformer_iwslt_de_en \
+    --max-epoch 50 \
+    --patience 10 \
+    --save-interval 5 \
+    --validate-interval 1 \
     --share-decoder-input-output-embed \
     --optimizer adam --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \
     --lr 5e-4 --lr-scheduler inverse_sqrt --warmup-updates 4000 \
