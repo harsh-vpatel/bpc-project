@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Configuration
-MOSES_SCRIPTS="./moses_scripts"
-OUTPUT_DIR="./dataset" # Output directory for all processed files
-src=hsb                # Change to 'dsb' for Lower Sorbian, 'hsb' for Upper Sorbian
+MOSES_SCRIPTS=./moses_scripts # Set this to your Moses installation
+OUTPUT_DIR="./dataset"        # Output directory for all processed files
+src=hsb                       # Change to 'dsb' for Lower Sorbian, 'hsb' for Upper Sorbian
 tgt=de
 max_len=100 # Maximum sentence length (adjust as needed)
 
@@ -13,19 +13,20 @@ DEV_RATIO=0.1
 TEST_RATIO=0.1
 
 # BPE configuration
-BPE_OPERATIONS=8000 # Number of BPE merge operations
+BPE_OPERATIONS=16000 # Number of BPE merge operations
 
 # Directory structure
 ORIGINAL_DIR="$OUTPUT_DIR/original"
 MOSES_DIR="$OUTPUT_DIR/output_moses"
 BPE_DIR="$OUTPUT_DIR/output_bpe"
+DATA_BIN_DIR="$OUTPUT_DIR/fairseq"
 
 # Input files (in original directory)
 input_src="$ORIGINAL_DIR/input.${src}"
 input_tgt="$ORIGINAL_DIR/input.${tgt}"
 
 # Create output directories if they don't exist
-mkdir -p "$ORIGINAL_DIR" "$MOSES_DIR" "$BPE_DIR"
+mkdir -p "$ORIGINAL_DIR" "$MOSES_DIR" "$BPE_DIR" "$DATA_BIN_DIR"
 
 # Check if input files exist
 if [ ! -f "$input_src" ] || [ ! -f "$input_tgt" ]; then
@@ -36,6 +37,12 @@ fi
 # Check if subword-nmt is installed
 if ! command -v subword-nmt &>/dev/null; then
     echo "Error: subword-nmt not found! Install with: pip install subword-nmt"
+    exit 1
+fi
+
+# Check if fairseq is installed
+if ! command -v fairseq-preprocess &>/dev/null; then
+    echo "Error: fairseq not found! Install with: pip install fairseq"
     exit 1
 fi
 
@@ -139,6 +146,18 @@ for split in train dev test; do
     done
 done
 
+# Step 9: Create fairseq binary dataset
+echo "Step 9: Creating fairseq binary dataset..."
+fairseq-preprocess \
+    --source-lang $src --target-lang $tgt \
+    --trainpref "$BPE_DIR/train.bpe" \
+    --validpref "$BPE_DIR/dev.bpe" \
+    --testpref "$BPE_DIR/test.bpe" \
+    --destdir "$DATA_BIN_DIR" \
+    --workers 4
+
+echo "Fairseq binary dataset created successfully!"
+
 # Show statistics
 echo "=== Preprocessing Statistics ==="
 echo "Original sentences: $(wc -l <$input_src)"
@@ -161,12 +180,32 @@ echo "=== Directory Structure ==="
 echo "$ORIGINAL_DIR/ - Original input files"
 echo "$MOSES_DIR/ - Moses preprocessing output, train/dev/test splits"
 echo "$BPE_DIR/ - BPE codes and tokenized files"
+echo "$DATA_BIN_DIR/ - Fairseq binary dataset (ready for training)"
 echo ""
 echo "=== Key Files for NMT Training ==="
-echo "Training data: $BPE_DIR/train.bpe.$src, $BPE_DIR/train.bpe.$tgt"
-echo "Dev data: $BPE_DIR/dev.bpe.$src, $BPE_DIR/dev.bpe.$tgt"
-echo "Test data: $BPE_DIR/test.bpe.$src, $BPE_DIR/test.bpe.$tgt"
+echo "Fairseq binary data: $DATA_BIN_DIR/"
 echo "BPE codes: $BPE_DIR/bpe.codes"
 echo "Truecaser models: $MOSES_DIR/truecase-model.$src, $MOSES_DIR/truecase-model.$tgt"
+echo ""
+echo "=== Training Command ==="
+echo "CUDA_VISIBLE_DEVICES=0,1 fairseq-train \\"
+echo "    $DATA_BIN_DIR \\"
+echo "    --arch transformer_iwslt_de_en \\"
+echo "    --share-decoder-input-output-embed \\"
+echo "    --optimizer adam --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \\"
+echo "    --lr 5e-4 --lr-scheduler inverse_sqrt --warmup-updates 4000 \\"
+echo "    --dropout 0.3 --weight-decay 0.0001 \\"
+echo "    --criterion label_smoothed_cross_entropy --label-smoothing 0.1 \\"
+echo "    --max-tokens 8192 \\"
+echo "    --eval-bleu \\"
+echo "    --eval-bleu-args '{\"beam\": 5, \"max_len_a\": 1.2, \"max_len_b\": 10}' \\"
+echo "    --eval-bleu-detok moses \\"
+echo "    --eval-bleu-remove-bpe \\"
+echo "    --eval-bleu-print-samples \\"
+echo "    --best-checkpoint-metric bleu --maximize-best-checkpoint-metric \\"
+echo "    --save-dir checkpoints/sorbian_german_transformer \\"
+echo "    --ddp-backend=pytorch_ddp \\"
+echo "    --distributed-world-size 2 \\"
+echo "    --distributed-port 12345"
 echo ""
 echo "Ready for NMT training!"

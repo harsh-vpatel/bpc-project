@@ -1,4 +1,5 @@
 .DStore
 dataset/output_bpe/*
 dataset/output_moses/*
+dataset/fairseq/*
 .venv
