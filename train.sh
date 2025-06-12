@@ -1,5 +1,7 @@
 #!/bin/bash
 
+DATA_BIN=./dataset/fairseq/data-bin
+
 CUDA_VISIBLE_DEVICES=0,1 fairseq-train \
     $DATA_BIN \
     --arch transformer \
