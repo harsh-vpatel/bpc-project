@@ -1,6 +1,0 @@
-PWD /Users/macbeth/Informatik/bpc/presentations
-INPUT /usr/local/texlive/2024/texmf.cnf
-INPUT /usr/local/texlive/2024/texmf-dist/web2c/texmf.cnf
-INPUT /usr/local/texlive/2024/texmf-var/web2c/pdftex/pdflatex.fmt
-INPUT data_prep_and_baseline.tex
-OUTPUT data_prep_and_baseline.log
