@@ -16,8 +16,10 @@ source .venv/bin/activate
 ./prepare.sh
 
 ```
+
 Here is how it works:
 
+```mermaid
 graph TD
     %% Input Files
     A[📁 Original Input Files<br/>input.hsb & input.de<br/>in ./dataset/original/] --> B{📋 Validation Check<br/>Files exist?<br/>Dependencies installed?}
@@ -73,3 +75,6 @@ graph TD
     class C,P error
     class V,W,X output
     class Y final
+```
+
+```
