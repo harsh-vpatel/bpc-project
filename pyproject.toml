@@ -10,6 +10,7 @@ dependencies = [
     "sacremoses>=0.1.1",
     "subword-nmt>=0.3.8",
     "torch>=2.0,<2.4",
+    "wandb>=0.20.1",
 ]
 
 [tool.uv.sources]

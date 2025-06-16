@@ -1,7 +1,7 @@
-# Single GPU training (simplest)
 CUDA_VISIBLE_DEVICES=0 fairseq-train \
-  ./dataset/fairseq \
+  ./dataset/fairseq_bpe \
   --arch transformer_iwslt_de_en \
+  --wandb-project $WANDB_BPC_PROJECT \
   --max-epoch 50 \
   --patience 10 \
   --save-interval 1 \
@@ -18,4 +18,4 @@ CUDA_VISIBLE_DEVICES=0 fairseq-train \
   --eval-bleu-remove-bpe \
   --eval-bleu-print-samples \
   --best-checkpoint-metric bleu --maximize-best-checkpoint-metric \
-  --save-dir checkpoints/sorbian_german_transformer
+  --save-dir checkpoints/sorbian_german_bpe
