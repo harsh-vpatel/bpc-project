@@ -88,6 +88,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fairseq" },
+    { name = "morfessor" },
     { name = "sacremoses" },
     { name = "subword-nmt" },
     { name = "torch" },
@@ -96,6 +97,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fairseq", git = "https://github.com/facebookresearch/fairseq.git?rev=v0.12.1" },
+    { name = "morfessor", specifier = ">=2.0.6" },
     { name = "sacremoses", specifier = ">=0.1.1" },
     { name = "subword-nmt", specifier = ">=0.3.8" },
     { name = "torch", specifier = ">=2.0,<2.4" },
@@ -468,6 +470,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/07/8c/14c2ae915e5f9dca5a22edd68b35be94400719ccfa068a03e0fb63d0f6f6/mock-5.2.0.tar.gz", hash = "sha256:4e460e818629b4b173f32d08bf30d3af8123afbb8e04bb5707a1fd4799e503f0", size = 92796 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/d9/617e6af809bf3a1d468e0d58c3997b1dc219a9a9202e650d30c2fc85d481/mock-5.2.0-py3-none-any.whl", hash = "sha256:7ba87f72ca0e915175596069dbbcc7c75af7b5e9b9bc107ad6349ede0819982f", size = 31617 },
+]
+
+[[package]]
+name = "morfessor"
+version = "2.0.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/5e/760a41def80f7e48e4f95937a8de73057871f655c0ec459f7aff3c1f95a2/Morfessor-2.0.6.tar.gz", hash = "sha256:bb3beac234341724c5f640f65803071f62373a50dba854d5a398567f9aefbab2", size = 34341 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/39/e6/7afea30be2ee4d29ce9de0fa53acbb033163615f849515c0b1956ad074ee/Morfessor-2.0.6-py3-none-any.whl", hash = "sha256:7215e37909ebd2bafeeec5fdf4e339a25e61aee4895ff99317b9fb44eddab562", size = 35784 },
 ]
 
 [[package]]

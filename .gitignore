@@ -1,6 +1,10 @@
 .DStore
 dataset/output_bpe/*
+dataset/output_morfessor/*
+dataset/output_moses_bpe/*
+dataset/output_moses_morfessor/*
 dataset/output_moses/*
-dataset/fairseq/*
+dataset/fairseq_bpe/*
+dataset/fairseq_morfessor/*
 .venv
 checkpoints/*
