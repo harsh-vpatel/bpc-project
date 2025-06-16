@@ -7,11 +7,6 @@ src=hsb                       # Change to 'dsb' for Lower Sorbian, 'hsb' for Upp
 tgt=de
 max_len=100 # Maximum sentence length (adjust as needed)
 
-# Split ratios
-TRAIN_RATIO=0.8
-DEV_RATIO=0.1
-TEST_RATIO=0.1
-
 # BPE configuration
 BPE_OPERATIONS=16000 # Number of BPE merge operations
 
@@ -21,18 +16,27 @@ MOSES_DIR="$OUTPUT_DIR/output_moses"
 BPE_DIR="$OUTPUT_DIR/output_bpe"
 DATA_BIN_DIR="$OUTPUT_DIR/fairseq"
 
-# Input files (in original directory)
-input_src="$ORIGINAL_DIR/input.${src}"
-input_tgt="$ORIGINAL_DIR/input.${tgt}"
+# Split files (in original directory)
+train_src="$ORIGINAL_DIR/train.${src}"
+train_tgt="$ORIGINAL_DIR/train.${tgt}"
+dev_src="$ORIGINAL_DIR/dev.${src}"
+dev_tgt="$ORIGINAL_DIR/dev.${tgt}"
+test_src="$ORIGINAL_DIR/test.${src}"
+test_tgt="$ORIGINAL_DIR/test.${tgt}"
 
 # Create output directories if they don't exist
 mkdir -p "$ORIGINAL_DIR" "$MOSES_DIR" "$BPE_DIR" "$DATA_BIN_DIR"
 
-# Check if input files exist
-if [ ! -f "$input_src" ] || [ ! -f "$input_tgt" ]; then
-  echo "Error: Input files $input_src or $input_tgt not found!"
-  exit 1
-fi
+# Check if split files exist
+for split in train dev test; do
+  for lang in $src $tgt; do
+    file="$ORIGINAL_DIR/${split}.${lang}"
+    if [ ! -f "$file" ]; then
+      echo "Error: Split file $file not found!"
+      exit 1
+    fi
+  done
+done
 
 # Check if subword-nmt is installed
 if ! command -v subword-nmt &>/dev/null; then
@@ -57,68 +61,53 @@ rm -f "$MOSES_DIR"/* "$BPE_DIR"/*
 
 echo "Starting preprocessing for ${src}-${tgt}..."
 
-# Step 1: Normalize punctuation
-echo "Step 1: Normalizing punctuation..."
-for lang in $src $tgt; do
-  if [ $lang == $src ]; then
-    input_file=$input_src
+# Step 1: Process each split separately through Moses pipeline
+echo "Step 1-5: Processing train/dev/test splits through Moses pipeline..."
+
+for split in train dev test; do
+  echo "Processing $split split..."
+  
+  # Step 1: Normalize punctuation
+  for lang in $src $tgt; do
+    input_file="$ORIGINAL_DIR/${split}.${lang}"
+    $MOSES_SCRIPTS/tokenizer/normalize-punctuation.perl -l $lang <"$input_file" >"$MOSES_DIR/${split}.norm.$lang"
+  done
+  
+  # Step 2: Tokenize
+  for lang in $src $tgt; do
+    $MOSES_SCRIPTS/tokenizer/tokenizer.perl -a -l $lang <"$MOSES_DIR/${split}.norm.$lang" >"$MOSES_DIR/${split}.tok.$lang"
+  done
+  
+  # Step 3: Clean corpus (only for train split to avoid removing dev/test data)
+  if [ "$split" == "train" ]; then
+    $MOSES_SCRIPTS/training/clean-corpus-n.perl "$MOSES_DIR/${split}.tok" $src $tgt "$MOSES_DIR/${split}.clean" 1 $max_len
   else
-    input_file=$input_tgt
+    # For dev/test, just copy tok files to clean files (no filtering)
+    cp "$MOSES_DIR/${split}.tok.$src" "$MOSES_DIR/${split}.clean.$src"
+    cp "$MOSES_DIR/${split}.tok.$tgt" "$MOSES_DIR/${split}.clean.$tgt"
   fi
-
-  $MOSES_SCRIPTS/tokenizer/normalize-punctuation.perl -l $lang <$input_file >"$MOSES_DIR/corpus.norm.$lang"
 done
 
-# Step 2: Tokenize
-echo "Step 2: Tokenizing..."
+# Step 4: Train truecaser on training data only
+echo "Step 4: Training truecaser on training data..."
 for lang in $src $tgt; do
-  $MOSES_SCRIPTS/tokenizer/tokenizer.perl -a -l $lang <"$MOSES_DIR/corpus.norm.$lang" >"$MOSES_DIR/corpus.tok.$lang"
+  $MOSES_SCRIPTS/recaser/train-truecaser.perl -model "$MOSES_DIR/truecase-model.$lang" -corpus "$MOSES_DIR/train.tok.$lang"
 done
 
-# Step 3: Clean corpus (remove sentences that are too long/short or misaligned)
-echo "Step 3: Cleaning corpus..."
-$MOSES_SCRIPTS/training/clean-corpus-n.perl "$MOSES_DIR/corpus.tok" $src $tgt "$MOSES_DIR/corpus.clean" 1 $max_len
-
-# Step 4: Train truecaser
-echo "Step 4: Training truecaser..."
-for lang in $src $tgt; do
-  $MOSES_SCRIPTS/recaser/train-truecaser.perl -model "$MOSES_DIR/truecase-model.$lang" -corpus "$MOSES_DIR/corpus.tok.$lang"
+# Step 5: Apply truecasing to all splits
+echo "Step 5: Applying truecasing to all splits..."
+for split in train dev test; do
+  for lang in $src $tgt; do
+    $MOSES_SCRIPTS/recaser/truecase.perl -model "$MOSES_DIR/truecase-model.$lang" <"$MOSES_DIR/${split}.clean.$lang" >"$MOSES_DIR/${split}.$lang"
+  done
 done
 
-# Step 5: Apply truecasing
-echo "Step 5: Applying truecasing..."
-for lang in $src $tgt; do
-  $MOSES_SCRIPTS/recaser/truecase.perl -model "$MOSES_DIR/truecase-model.$lang" <"$MOSES_DIR/corpus.clean.$lang" >"$MOSES_DIR/corpus.tc.$lang"
-done
-
-# Create final Moses output
-echo "Creating final Moses parallel corpus..."
-paste "$MOSES_DIR/corpus.tc.$src" "$MOSES_DIR/corpus.tc.$tgt" >"$MOSES_DIR/final_corpus.txt"
-
-# Step 6: Split into train/dev/test
-echo "Step 6: Splitting into train/dev/test sets..."
-total_lines=$(wc -l <"$MOSES_DIR/corpus.tc.$src")
-train_lines=$(echo "$total_lines * 0.8" | bc | cut -d. -f1)
-dev_lines=$(echo "$total_lines * 0.1" | bc | cut -d. -f1)
-
-echo "Total lines: $total_lines, Train: $train_lines, Dev: $dev_lines"
-
-# Split source language
-head -n "$train_lines" "$MOSES_DIR/corpus.tc.$src" >"$MOSES_DIR/train.$src"
-tail -n +$((train_lines + 1)) "$MOSES_DIR/corpus.tc.$src" | head -n "$dev_lines" >"$MOSES_DIR/dev.$src"
-tail -n +$((train_lines + dev_lines + 1)) "$MOSES_DIR/corpus.tc.$src" >"$MOSES_DIR/test.$src"
-
-# Split target language
-head -n "$train_lines" "$MOSES_DIR/corpus.tc.$tgt" >"$MOSES_DIR/train.$tgt"
-tail -n +$((train_lines + 1)) "$MOSES_DIR/corpus.tc.$tgt" | head -n "$dev_lines" >"$MOSES_DIR/dev.$tgt"
-tail -n +$((train_lines + dev_lines + 1)) "$MOSES_DIR/corpus.tc.$tgt" >"$MOSES_DIR/test.$tgt"
-
-# Step 7: Learn BPE on training data only
-echo "Step 7: Learning BPE on training data..."
+# Step 6: Learn BPE on training data only
+echo "Step 6: Learning BPE on training data..."
 
 # Check if training files are not empty
 if [ ! -s "$MOSES_DIR/train.$src" ] || [ ! -s "$MOSES_DIR/train.$tgt" ]; then
-  echo "Error: Training files are empty! Check the splitting step."
+  echo "Error: Training files are empty! Check the Moses preprocessing step."
   exit 1
 fi
 
@@ -138,16 +127,16 @@ fi
 
 echo "BPE codes learned successfully ($(wc -l <"$BPE_DIR/bpe.codes") operations)"
 
-# Step 8: Apply BPE to all splits
-echo "Step 8: Applying BPE to all splits..."
+# Step 7: Apply BPE to all splits
+echo "Step 7: Applying BPE to all splits..."
 for split in train dev test; do
   for lang in $src $tgt; do
     subword-nmt apply-bpe -c "$BPE_DIR/bpe.codes" <"$MOSES_DIR/$split.$lang" >"$BPE_DIR/$split.bpe.$lang"
   done
 done
 
-# Step 9: Create fairseq binary dataset
-echo "Step 9: Creating fairseq binary dataset..."
+# Step 8: Create fairseq binary dataset
+echo "Step 8: Creating fairseq binary dataset..."
 fairseq-preprocess \
   --source-lang $src --target-lang $tgt \
   --trainpref "$BPE_DIR/train.bpe" \
@@ -160,24 +149,25 @@ echo "Fairseq binary dataset created successfully!"
 
 # Show statistics
 echo "=== Preprocessing Statistics ==="
-echo "Original sentences: $(wc -l <$input_src)"
-echo "After cleaning: $(wc -l <"$MOSES_DIR/corpus.clean.$src")"
-echo "Final sentences: $(wc -l <"$MOSES_DIR/corpus.tc.$src")"
+echo "=== Original Split Statistics ==="
+echo "Training sentences: $(wc -l <"$ORIGINAL_DIR/train.$src")"
+echo "Development sentences: $(wc -l <"$ORIGINAL_DIR/dev.$src")"
+echo "Test sentences: $(wc -l <"$ORIGINAL_DIR/test.$src")"
 echo ""
-echo "=== Split Statistics ==="
+echo "=== After Moses Processing ==="
 echo "Training sentences: $(wc -l <"$MOSES_DIR/train.$src")"
 echo "Development sentences: $(wc -l <"$MOSES_DIR/dev.$src")"
 echo "Test sentences: $(wc -l <"$MOSES_DIR/test.$src")"
 echo "BPE operations: $BPE_OPERATIONS"
 
 # Optional: Clean up intermediate files (comment out if you want to keep them)
-# rm -f "$MOSES_DIR"/corpus.norm.* "$MOSES_DIR"/corpus.tok.* "$MOSES_DIR"/corpus.clean.* "$MOSES_DIR"/corpus.tc.* "$BPE_DIR"/train_combined.txt
+# rm -f "$MOSES_DIR"/*.norm.* "$MOSES_DIR"/*.tok.* "$MOSES_DIR"/*.clean.* "$BPE_DIR"/train_combined.txt
 
 echo ""
 echo "Preprocessing complete!"
 echo ""
 echo "=== Directory Structure ==="
-echo "$ORIGINAL_DIR/ - Original input files"
+echo "$ORIGINAL_DIR/ - Original train/dev/test split files"
 echo "$MOSES_DIR/ - Moses preprocessing output, train/dev/test splits"
 echo "$BPE_DIR/ - BPE codes and tokenized files"
 echo "$DATA_BIN_DIR/ - Fairseq binary dataset (ready for training)"
@@ -186,26 +176,5 @@ echo "=== Key Files for NMT Training ==="
 echo "Fairseq binary data: $DATA_BIN_DIR/"
 echo "BPE codes: $BPE_DIR/bpe.codes"
 echo "Truecaser models: $MOSES_DIR/truecase-model.$src, $MOSES_DIR/truecase-model.$tgt"
-echo ""
-echo "=== Training Command ==="
-echo "CUDA_VISIBLE_DEVICES=0,1 fairseq-train \\"
-echo "    $DATA_BIN_DIR \\"
-echo "    --arch transformer_iwslt_de_en \\"
-echo "    --share-decoder-input-output-embed \\"
-echo "    --optimizer adam --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \\"
-echo "    --lr 5e-4 --lr-scheduler inverse_sqrt --warmup-updates 4000 \\"
-echo "    --dropout 0.3 --weight-decay 0.0001 \\"
-echo "    --criterion label_smoothed_cross_entropy --label-smoothing 0.1 \\"
-echo "    --max-tokens 8192 \\"
-echo "    --eval-bleu \\"
-echo "    --eval-bleu-args '{\"beam\": 5, \"max_len_a\": 1.2, \"max_len_b\": 10}' \\"
-echo "    --eval-bleu-detok moses \\"
-echo "    --eval-bleu-remove-bpe \\"
-echo "    --eval-bleu-print-samples \\"
-echo "    --best-checkpoint-metric bleu --maximize-best-checkpoint-metric \\"
-echo "    --save-dir checkpoints/sorbian_german_transformer \\"
-echo "    --ddp-backend=pytorch_ddp \\"
-echo "    --distributed-world-size 2 \\"
-echo "    --distributed-port 12345"
 echo ""
 echo "Ready for NMT training!"
