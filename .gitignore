@@ -7,5 +7,5 @@ dataset/output_moses/
 dataset/fairseq_bpe/
 dataset/fairseq_morfessor/
 .venv
-checkpoints/
 wandb/
+checkpoints/
