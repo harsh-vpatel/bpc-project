@@ -31,7 +31,7 @@ echo "Using segmentation method: $SEGMENTATION_METHOD"
 
 # Directory structure - different for each method
 ORIGINAL_DIR="$OUTPUT_DIR/original"
-MOSES_DIR="$OUTPUT_DIR/output_moses_${SEGMENTATION_METHOD}"
+MOSES_DIR="$OUTPUT_DIR/output_moses"
 if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
   SEGMENTATION_DIR="$OUTPUT_DIR/output_bpe"
   DATA_BIN_DIR="$OUTPUT_DIR/fairseq_bpe"
