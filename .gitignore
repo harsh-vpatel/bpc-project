@@ -9,3 +9,4 @@ dataset/fairseq_morfessor/
 .venv
 wandb/
 checkpoints/
+results/
