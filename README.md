@@ -4,9 +4,7 @@
 
 ```bash
 git clone git@github.com:nilsimda/bpc-project.git && cd bpc-project
-uv venv --python 3.10 # seems to work better with fairseq
-uv pip install subword-nmt
-uv pip install fairseq
+uv sync
 source .venv/bin/activate
 ```
 
@@ -17,6 +15,7 @@ source .venv/bin/activate
 ```
 
 ## Evaluate a trained model
+
 ```bash
 ./eval.sh                                    # Default: BPE model, test set
 ./eval.sh sorbian_german_morfessor morfessor # Morfessor model, test set
