@@ -11,9 +11,7 @@ This is a neural machine translation (NMT) project for translating between Upper
 ```bash
 # Clone and setup environment
 git clone git@github.com:nilsimda/bpc-project.git && cd bpc-project
-uv venv --python 3.10  # Python 3.10 required for fairseq compatibility
-uv pip install subword-nmt
-uv pip install fairseq
+uv sync  # Installs all dependencies including fairseq, subword-nmt, morfessor
 source .venv/bin/activate
 ```
 
@@ -21,33 +19,44 @@ source .venv/bin/activate
 
 ### Data Preprocessing
 ```bash
-./prepare.sh  # Full preprocessing pipeline: Moses → BPE → Fairseq binary
+./prepare.sh           # BPE-only pipeline: Moses → BPE → Fairseq binary
+./prepare.sh morfessor # Morfessor + BPE pipeline: Moses → Morfessor → BPE → Fairseq binary
 ```
 
 ### Training
 ```bash
-./train.sh  # Train transformer model with single GPU
+# BPE training
+bash train_bpe_hsb-de.sh
+
+# Morfessor training  
+bash train_morfessor_hsb-de.sh
 ```
 
 ### Evaluation
 ```bash
-./eval.sh  # Generate translations using best checkpoint
+./eval.sh                                    # Default: BPE model, test set
+./eval.sh sorbian_german_morfessor morfessor # Morfessor model, test set
+./eval.sh sorbian_german_bpe bpe dev         # BPE model, dev set
 ```
 
 ## Architecture
 
 ### Data Processing Pipeline
 1. **Moses preprocessing**: Normalize punctuation → Tokenize → Clean → Truecase
-2. **Data splitting**: 80% train, 10% dev, 10% test
-3. **BPE encoding**: 16K operations with min-frequency 2
+2. **Optional Morfessor segmentation**: Apply morphological segmentation (when `morfessor` flag is used)
+3. **BPE segmentation**: Always applied (16K operations, min-frequency 2)
 4. **Fairseq preprocessing**: Convert to binary format for training
 
 ### Directory Structure
-- `dataset/original/`: Raw parallel data (input.hsb, input.de)
-- `dataset/output_moses/`: Moses preprocessing output and data splits
-- `dataset/output_bpe/`: BPE codes and encoded files
-- `dataset/fairseq/`: Binary dataset for fairseq training
+- `dataset/original/`: Train/dev/test split files (train.hsb, train.de, etc.)
+- `dataset/output_moses/`: Moses preprocessing output
+- `dataset/output_bpe/`: BPE codes and BPE-only segmented files
+- `dataset/output_morfessor/`: Morfessor models and morphologically segmented files
+- `dataset/output_morfessor_bpe/`: BPE codes and files with Morfessor+BPE segmentation
+- `dataset/fairseq_bpe/`: Binary dataset for BPE-only training
+- `dataset/fairseq_morfessor_bpe/`: Binary dataset for Morfessor+BPE training
 - `checkpoints/`: Model checkpoints during training
+- `results/`: Evaluation results and metrics
 - `moses_scripts/`: Perl scripts for text preprocessing
 
 ### Model Configuration
@@ -59,8 +68,21 @@ source .venv/bin/activate
 
 ## Important Notes
 
-- Input files must be named `input.hsb` and `input.de` in `dataset/original/`
+- Data files must be pre-split as train/dev/test in `dataset/original/` (train.hsb, train.de, etc.)
+- BPE segmentation is always applied (16K operations)
+- Morfessor morphological segmentation can be applied as preprocessing before BPE
 - BPE operations may need adjustment for very small datasets
 - Model uses shared decoder input/output embeddings
 - Checkpoints saved every epoch, best model selected by BLEU score
 - Uses label smoothed cross-entropy loss with 0.1 smoothing
+- Evaluation produces BLEU, chrF2++, and COMET scores with detailed result files
+
+## Dependencies
+
+- Python 3.10+ (required for fairseq compatibility)
+- fairseq (Facebook's sequence-to-sequence toolkit)
+- subword-nmt (for BPE segmentation)
+- morfessor (for morphological segmentation)
+- sacremoses (for Moses preprocessing)
+- unbabel-comet (for COMET evaluation metric)
+- torch (PyTorch, version <2.4 for fairseq compatibility)

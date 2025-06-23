@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Usage: ./prepare_morphology.sh [bpe|morfessor]
-# Default: bpe
+# Usage: ./prepare.sh [morfessor]
+# Default: BPE only. Optional: apply Morfessor segmentation before BPE
 
 # Configuration
 MOSES_SCRIPTS=./moses_scripts # Set this to your Moses installation
@@ -10,8 +10,13 @@ src=hsb                       # Change to 'dsb' for Lower Sorbian, 'hsb' for Upp
 tgt=de
 max_len=100 # Maximum sentence length (adjust as needed)
 
-# Segmentation method (bpe or morfessor)
-SEGMENTATION_METHOD=${1:-bpe}
+# Use Morfessor preprocessing (optional)
+USE_MORFESSOR=${1:-}
+if [[ "$USE_MORFESSOR" == "morfessor" ]]; then
+  USE_MORFESSOR=true
+else
+  USE_MORFESSOR=false
+fi
 
 # BPE configuration
 BPE_OPERATIONS=16000 # Number of BPE merge operations
@@ -21,23 +26,28 @@ MORFESSOR_ALGORITHM="recursive" # Options: recursive, viterbi, baseline
 MORFESSOR_DAMPING=0.01          # Damping parameter for Morfessor
 MORFESSOR_ALPHA=1.0             # Alpha parameter for Morfessor
 
-# Validate segmentation method
-if [[ "$SEGMENTATION_METHOD" != "bpe" && "$SEGMENTATION_METHOD" != "morfessor" ]]; then
-  echo "Error: Invalid segmentation method '$SEGMENTATION_METHOD'. Use 'bpe' or 'morfessor'."
+# Validate argument
+if [[ -n "$1" && "$1" != "morfessor" ]]; then
+  echo "Error: Invalid argument '$1'. Use 'morfessor' or leave empty for BPE-only."
   exit 1
 fi
 
-echo "Using segmentation method: $SEGMENTATION_METHOD"
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  echo "Using Morfessor + BPE segmentation pipeline"
+else
+  echo "Using BPE-only segmentation pipeline"
+fi
 
-# Directory structure - different for each method
+# Directory structure
 ORIGINAL_DIR="$OUTPUT_DIR/original"
 MOSES_DIR="$OUTPUT_DIR/output_moses"
-if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
-  SEGMENTATION_DIR="$OUTPUT_DIR/output_bpe"
-  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_bpe"
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  MORFESSOR_DIR="$OUTPUT_DIR/output_morfessor"
+  BPE_DIR="$OUTPUT_DIR/output_morfessor_bpe"
+  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_morfessor_bpe"
 else
-  SEGMENTATION_DIR="$OUTPUT_DIR/output_morfessor"
-  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_morfessor"
+  BPE_DIR="$OUTPUT_DIR/output_bpe"
+  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_bpe"
 fi
 
 # Split files (in original directory)
@@ -49,7 +59,11 @@ test_src="$ORIGINAL_DIR/test.${src}"
 test_tgt="$ORIGINAL_DIR/test.${tgt}"
 
 # Create output directories if they don't exist
-mkdir -p "$ORIGINAL_DIR" "$MOSES_DIR" "$SEGMENTATION_DIR" "$DATA_BIN_DIR"
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  mkdir -p "$ORIGINAL_DIR" "$MOSES_DIR" "$MORFESSOR_DIR" "$BPE_DIR" "$DATA_BIN_DIR"
+else
+  mkdir -p "$ORIGINAL_DIR" "$MOSES_DIR" "$BPE_DIR" "$DATA_BIN_DIR"
+fi
 
 # Check if split files exist
 for split in train dev test; do
@@ -62,17 +76,15 @@ for split in train dev test; do
   done
 done
 
-# Check dependencies based on segmentation method
-if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
-  if ! command -v subword-nmt &>/dev/null; then
-    echo "Error: subword-nmt not found! Install with: pip install subword-nmt"
-    exit 1
-  fi
-else
-  if ! python -c "import morfessor" &>/dev/null; then
-    echo "Error: morfessor not found! Install with: pip install morfessor"
-    exit 1
-  fi
+# Check dependencies
+if ! command -v subword-nmt &>/dev/null; then
+  echo "Error: subword-nmt not found! Install with: pip install subword-nmt"
+  exit 1
+fi
+
+if [[ "$USE_MORFESSOR" == "true" ]] && ! python -c "import morfessor" &>/dev/null; then
+  echo "Error: morfessor not found! Install with: pip install morfessor"
+  exit 1
 fi
 
 # Check if fairseq is installed
@@ -83,14 +95,17 @@ fi
 
 # Clean up any previous runs in output directories
 rm -f "$MOSES_DIR"/*
-if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
-  rm -f "$SEGMENTATION_DIR"/*
-else
+rm -f "$BPE_DIR"/*
+if [[ "$USE_MORFESSOR" == "true" ]]; then
   # For morfessor, preserve existing models but clean other files
-  find "$SEGMENTATION_DIR" -type f ! -name "morfessor_model.*.bin" -delete
+  find "$MORFESSOR_DIR" -type f ! -name "morfessor_model.*.bin" -delete 2>/dev/null || true
 fi
 
-echo "Starting preprocessing for ${src}-${tgt} with ${SEGMENTATION_METHOD}..."
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  echo "Starting preprocessing for ${src}-${tgt} with Morfessor + BPE..."
+else
+  echo "Starting preprocessing for ${src}-${tgt} with BPE..."
+fi
 
 # Step 1: Process each split separately through Moses pipeline
 echo "Step 1-5: Processing train/dev/test splits through Moses pipeline..."
@@ -133,34 +148,9 @@ for split in train dev test; do
   done
 done
 
-# Step 6: Learn segmentation on training data only
-if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
-  echo "Step 6: Learning BPE on training data..."
-
-  # Check if training files are not empty
-  if [ ! -s "$MOSES_DIR/train.$src" ] || [ ! -s "$MOSES_DIR/train.$tgt" ]; then
-    echo "Error: Training files are empty! Check the Moses preprocessing step."
-    exit 1
-  fi
-
-  # Combine training data and learn BPE
-  cat "$MOSES_DIR/train.$src" "$MOSES_DIR/train.$tgt" >"$SEGMENTATION_DIR/train_combined.txt"
-  echo "Combined training data has $(wc -l <"$SEGMENTATION_DIR/train_combined.txt") lines"
-
-  # Learn BPE with minimum frequency threshold
-  subword-nmt learn-bpe -s $BPE_OPERATIONS --min-frequency 2 <"$SEGMENTATION_DIR/train_combined.txt" >"$SEGMENTATION_DIR/bpe.codes"
-
-  # Check if BPE codes were created successfully
-  if [ ! -s "$SEGMENTATION_DIR/bpe.codes" ]; then
-    echo "Error: BPE codes file is empty or was not created!"
-    echo "This might happen with very small datasets. Try reducing BPE_OPERATIONS."
-    exit 1
-  fi
-
-  echo "BPE codes learned successfully ($(wc -l <"$SEGMENTATION_DIR/bpe.codes") operations)"
-
-else
-  echo "Step 6: Learning Morfessor segmentation on training data..."
+# Step 6: Learn Morfessor segmentation (if enabled)
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  echo "Step 6a: Learning Morfessor segmentation on training data..."
 
   # Check if training files are not empty
   if [ ! -s "$MOSES_DIR/train.$src" ] || [ ! -s "$MOSES_DIR/train.$tgt" ]; then
@@ -170,12 +160,12 @@ else
 
   # Learn Morfessor models for each language separately
   for lang in $src $tgt; do
-    if [ -f "$SEGMENTATION_DIR/morfessor_model.$lang.bin" ]; then
+    if [ -f "$MORFESSOR_DIR/morfessor_model.$lang.bin" ]; then
       echo "Morfessor model for $lang already exists, skipping training..."
     else
       echo "Training Morfessor model for $lang..."
       morfessor-train \
-        -s "$SEGMENTATION_DIR/morfessor_model.$lang.bin" \
+        -s "$MORFESSOR_DIR/morfessor_model.$lang.bin" \
         -d ones \
         "$MOSES_DIR/train.$lang"
     fi
@@ -183,52 +173,99 @@ else
 
   # Check if Morfessor models were created successfully
   for lang in $src $tgt; do
-    if [ ! -f "$SEGMENTATION_DIR/morfessor_model.$lang.bin" ]; then
+    if [ ! -f "$MORFESSOR_DIR/morfessor_model.$lang.bin" ]; then
       echo "Error: Morfessor model for $lang was not created!"
       exit 1
     fi
   done
 
   echo "Morfessor models trained successfully for both languages"
-fi
 
-# Step 7: Apply segmentation to all splits
-echo "Step 7: Applying ${SEGMENTATION_METHOD} to all splits..."
-
-if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
-  for split in train dev test; do
-    for lang in $src $tgt; do
-      subword-nmt apply-bpe -c "$SEGMENTATION_DIR/bpe.codes" <"$MOSES_DIR/$split.$lang" >"$SEGMENTATION_DIR/$split.bpe.$lang"
-    done
-  done
-
-  # Set file extension for fairseq preprocessing
-  SEGMENTATION_EXT="bpe"
-else
+  # Apply Morfessor segmentation to all splits
+  echo "Step 6b: Applying Morfessor segmentation to all splits..."
   for split in train dev test; do
     for lang in $src $tgt; do
       echo "Applying Morfessor segmentation to $split.$lang..."
       morfessor-segment \
-        -l "$SEGMENTATION_DIR/morfessor_model.$lang.bin" \
+        -l "$MORFESSOR_DIR/morfessor_model.$lang.bin" \
         --output-format-separator "@@ " \
         --output-newlines \
         --output-format "{analysis} " \
         "$MOSES_DIR/$split.$lang" \
-        >"$SEGMENTATION_DIR/$split.morfessor.$lang"
+        >"$MORFESSOR_DIR/$split.morfessor.$lang"
     done
   done
-
-  # Set file extension for fairseq preprocessing
-  SEGMENTATION_EXT="morfessor"
+  MORFESSOR_INPUT_DIR="$MORFESSOR_DIR"
+  MORFESSOR_EXT="morfessor"
+else
+  # No Morfessor preprocessing, use Moses output directly
+  MORFESSOR_INPUT_DIR="$MOSES_DIR"
+  MORFESSOR_EXT=""
 fi
 
-# Step 8: Create fairseq binary dataset
-echo "Step 8: Creating fairseq binary dataset..."
+# Step 7: Learn BPE on training data (always applied)
+echo "Step 7: Learning BPE on training data..."
+
+# Check if training files are not empty
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  TRAIN_SRC_FILE="$MORFESSOR_DIR/train.morfessor.$src"
+  TRAIN_TGT_FILE="$MORFESSOR_DIR/train.morfessor.$tgt"
+else
+  TRAIN_SRC_FILE="$MOSES_DIR/train.$src"
+  TRAIN_TGT_FILE="$MOSES_DIR/train.$tgt"
+fi
+
+if [ ! -s "$TRAIN_SRC_FILE" ] || [ ! -s "$TRAIN_TGT_FILE" ]; then
+  echo "Error: Training files are empty! Check the preprocessing steps."
+  exit 1
+fi
+
+# Combine training data and learn BPE
+cat "$TRAIN_SRC_FILE" "$TRAIN_TGT_FILE" >"$BPE_DIR/train_combined.txt"
+echo "Combined training data has $(wc -l <"$BPE_DIR/train_combined.txt") lines"
+
+# Learn BPE with minimum frequency threshold
+subword-nmt learn-bpe -s $BPE_OPERATIONS --min-frequency 2 <"$BPE_DIR/train_combined.txt" >"$BPE_DIR/bpe.codes"
+
+# Check if BPE codes were created successfully
+if [ ! -s "$BPE_DIR/bpe.codes" ]; then
+  echo "Error: BPE codes file is empty or was not created!"
+  echo "This might happen with very small datasets. Try reducing BPE_OPERATIONS."
+  exit 1
+fi
+
+echo "BPE codes learned successfully ($(wc -l <"$BPE_DIR/bpe.codes") operations)"
+
+# Step 8: Apply BPE to all splits
+echo "Step 8: Applying BPE to all splits..."
+
+for split in train dev test; do
+  for lang in $src $tgt; do
+    if [[ "$USE_MORFESSOR" == "true" ]]; then
+      INPUT_FILE="$MORFESSOR_DIR/$split.morfessor.$lang"
+      OUTPUT_FILE="$BPE_DIR/$split.morfessor.bpe.$lang"
+    else
+      INPUT_FILE="$MOSES_DIR/$split.$lang"
+      OUTPUT_FILE="$BPE_DIR/$split.bpe.$lang"
+    fi
+    subword-nmt apply-bpe -c "$BPE_DIR/bpe.codes" <"$INPUT_FILE" >"$OUTPUT_FILE"
+  done
+done
+
+# Set file extension for fairseq preprocessing
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  FINAL_EXT="morfessor.bpe"
+else
+  FINAL_EXT="bpe"
+fi
+
+# Step 9: Create fairseq binary dataset
+echo "Step 9: Creating fairseq binary dataset..."
 fairseq-preprocess \
   --source-lang $src --target-lang $tgt \
-  --trainpref "$SEGMENTATION_DIR/train.$SEGMENTATION_EXT" \
-  --validpref "$SEGMENTATION_DIR/dev.$SEGMENTATION_EXT" \
-  --testpref "$SEGMENTATION_DIR/test.$SEGMENTATION_EXT" \
+  --trainpref "$BPE_DIR/train.$FINAL_EXT" \
+  --validpref "$BPE_DIR/dev.$FINAL_EXT" \
+  --testpref "$BPE_DIR/test.$FINAL_EXT" \
   --destdir "$DATA_BIN_DIR" \
   --workers 4
 
@@ -246,9 +283,8 @@ echo "Training sentences: $(wc -l <"$MOSES_DIR/train.$src")"
 echo "Development sentences: $(wc -l <"$MOSES_DIR/dev.$src")"
 echo "Test sentences: $(wc -l <"$MOSES_DIR/test.$src")"
 
-if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
-  echo "BPE operations: $BPE_OPERATIONS"
-else
+echo "BPE operations: $BPE_OPERATIONS"
+if [[ "$USE_MORFESSOR" == "true" ]]; then
   echo "Morfessor algorithm: $MORFESSOR_ALGORITHM"
   echo "Morfessor damping: $MORFESSOR_DAMPING"
   echo "Morfessor alpha: $MORFESSOR_ALPHA"
@@ -263,16 +299,22 @@ echo ""
 echo "=== Directory Structure ==="
 echo "$ORIGINAL_DIR/ - Original train/dev/test split files"
 echo "$MOSES_DIR/ - Moses preprocessing output, train/dev/test splits"
-echo "$SEGMENTATION_DIR/ - ${SEGMENTATION_METHOD^^} codes/models and tokenized files"
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  echo "$MORFESSOR_DIR/ - Morfessor models and segmented files"
+fi
+echo "$BPE_DIR/ - BPE codes and final segmented files"
 echo "$DATA_BIN_DIR/ - Fairseq binary dataset (ready for training)"
 echo ""
 echo "=== Key Files for NMT Training ==="
 echo "Fairseq binary data: $DATA_BIN_DIR/"
-if [ "$SEGMENTATION_METHOD" == "bpe" ]; then
-  echo "BPE codes: $SEGMENTATION_DIR/bpe.codes"
-else
-  echo "Morfessor models: $SEGMENTATION_DIR/morfessor_model.$src.bin, $SEGMENTATION_DIR/morfessor_model.$tgt.bin"
+echo "BPE codes: $BPE_DIR/bpe.codes"
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  echo "Morfessor models: $MORFESSOR_DIR/morfessor_model.$src.bin, $MORFESSOR_DIR/morfessor_model.$tgt.bin"
 fi
 echo "Truecaser models: $MOSES_DIR/truecase-model.$src, $MOSES_DIR/truecase-model.$tgt"
 echo ""
-echo "Ready for NMT training with $SEGMENTATION_METHOD segmentation!"
+if [[ "$USE_MORFESSOR" == "true" ]]; then
+  echo "Ready for NMT training with Morfessor + BPE segmentation!"
+else
+  echo "Ready for NMT training with BPE segmentation!"
+fi
