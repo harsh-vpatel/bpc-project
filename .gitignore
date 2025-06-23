@@ -6,6 +6,8 @@ dataset/output_moses_morfessor/
 dataset/output_moses/
 dataset/fairseq_bpe/
 dataset/fairseq_morfessor/
+dataset/fairseq_morfessor_bpe/
+dataset/output_morfessor_bpe/
 .venv
 wandb/
 checkpoints/
