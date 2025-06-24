@@ -11,28 +11,14 @@ set -e # Exit on any error
 
 # Default parameters
 DEFAULT_CHECKPOINT="sorbian_german_bpe"
-DEFAULT_DATASET="bpe"
+DEFAULT_DATASET_DIR="./dataset/fairseq_bpe/"
 DEFAULT_SPLIT="test"
+MOSES_DIR="dataset/output_moses"
 
 # Parse command line arguments
 CHECKPOINT_DIR=${1:-$DEFAULT_CHECKPOINT}
-DATASET_TYPE=${2:-$DEFAULT_DATASET}
+FAIRSEQ_DATA_DIR=${2:-$DEFAULT_DATASET_DIR}
 SPLIT=${3:-$DEFAULT_SPLIT}
-
-# Validate dataset type
-if [[ "$DATASET_TYPE" != "bpe" && "$DATASET_TYPE" != "morfessor" ]]; then
-  echo "Error: Dataset type must be 'bpe' or 'morfessor', got: $DATASET_TYPE"
-  exit 1
-fi
-
-# Set paths based on dataset type
-if [ "$DATASET_TYPE" == "bpe" ]; then
-  FAIRSEQ_DATA_DIR="dataset/fairseq_bpe"
-  MOSES_DIR="dataset/output_moses"
-else
-  FAIRSEQ_DATA_DIR="dataset/fairseq_morfessor"
-  MOSES_DIR="dataset/output_moses"
-fi
 
 # Validate paths exist
 CHECKPOINT_PATH="checkpoints/$CHECKPOINT_DIR/checkpoint_best.pt"
@@ -45,8 +31,6 @@ fi
 
 if [ ! -d "$FAIRSEQ_DATA_DIR" ]; then
   echo "Error: Dataset directory not found: $FAIRSEQ_DATA_DIR"
-  echo "Available datasets:"
-  ls -1d dataset/fairseq_* 2>/dev/null | sed 's|dataset/fairseq_||' || echo "  None found"
   exit 1
 fi
 
@@ -144,7 +128,7 @@ if command -v comet-score &>/dev/null; then
   # Suppress verbose output, capture only final score
   COMET_FULL=$(comet-score -s "$SOURCE_FILE" -t "$HYPOTHESES_FILE" -r "$REFERENCES_FILE" 2>/dev/null || echo "COMET evaluation failed")
   COMET_OUTPUT=$(echo "$COMET_FULL" | grep "score:" | tail -1)
-  
+
   save_metrics "COMET Score" "$COMET_OUTPUT"
 else
   log "WARNING: comet-score not found - skipping COMET evaluation"
