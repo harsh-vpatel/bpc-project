@@ -1,5 +1,7 @@
 # BPC Project
 
+Bidirectional neural machine translation between Upper Sorbian (hsb) and German (de) using Fairseq.
+
 ## Install
 
 ```bash
@@ -11,7 +13,11 @@ source .venv/bin/activate
 ## Prepare dataset
 
 ```bash
-./prepare.sh [morfessor|bpe]
+./prepare.sh                    # Default: hsb→de, BPE-only
+./prepare.sh hsb-de             # Explicit hsb→de direction
+./prepare.sh de-hsb             # German→Sorbian direction
+./prepare.sh hsb-de morfessor   # With Morfessor segmentation
+./prepare.sh de-hsb morfessor   # Reverse direction with Morfessor
 ```
 
 ## Evaluate a trained model

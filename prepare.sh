@@ -1,17 +1,35 @@
 #!/bin/bash
 
-# Usage: ./prepare.sh [morfessor]
-# Default: BPE only. Optional: apply Morfessor segmentation before BPE
+# Usage: ./prepare.sh [direction] [morfessor]
+# Direction: hsb-de (default) or de-hsb
+# Morfessor: Optional, apply Morfessor segmentation before BPE
+
+# Parse arguments
+DIRECTION=${1:-hsb-de}
+USE_MORFESSOR_ARG=${2:-}
+
+# Validate direction argument
+if [[ "$DIRECTION" != "hsb-de" && "$DIRECTION" != "de-hsb" ]]; then
+  echo "Error: Invalid direction '$DIRECTION'. Use 'hsb-de' or 'de-hsb'."
+  exit 1
+fi
+
+# Set source and target languages based on direction
+if [[ "$DIRECTION" == "hsb-de" ]]; then
+  src=hsb
+  tgt=de
+else
+  src=de
+  tgt=hsb
+fi
 
 # Configuration
 MOSES_SCRIPTS=./moses_scripts # Set this to your Moses installation
 OUTPUT_DIR="./dataset"        # Output directory for all processed files
-src=hsb                       # Change to 'dsb' for Lower Sorbian, 'hsb' for Upper Sorbian
-tgt=de
 max_len=100 # Maximum sentence length (adjust as needed)
 
 # Use Morfessor preprocessing (optional)
-USE_MORFESSOR=${1:-}
+USE_MORFESSOR=${USE_MORFESSOR_ARG:-}
 if [[ "$USE_MORFESSOR" == "morfessor" ]]; then
   USE_MORFESSOR=true
 else
@@ -26,28 +44,29 @@ MORFESSOR_ALGORITHM="recursive" # Options: recursive, viterbi, baseline
 MORFESSOR_DAMPING=0.01          # Damping parameter for Morfessor
 MORFESSOR_ALPHA=1.0             # Alpha parameter for Morfessor
 
-# Validate argument
-if [[ -n "$1" && "$1" != "morfessor" ]]; then
-  echo "Error: Invalid argument '$1'. Use 'morfessor' or leave empty for BPE-only."
+# Validate morfessor argument
+if [[ -n "$USE_MORFESSOR_ARG" && "$USE_MORFESSOR_ARG" != "morfessor" ]]; then
+  echo "Error: Invalid morfessor argument '$USE_MORFESSOR_ARG'. Use 'morfessor' or leave empty for BPE-only."
   exit 1
 fi
 
+echo "Processing direction: $DIRECTION ($src -> $tgt)"
 if [[ "$USE_MORFESSOR" == "true" ]]; then
   echo "Using Morfessor + BPE segmentation pipeline"
 else
   echo "Using BPE-only segmentation pipeline"
 fi
 
-# Directory structure
+# Directory structure - add direction to final binary dataset
 ORIGINAL_DIR="$OUTPUT_DIR/original"
 MOSES_DIR="$OUTPUT_DIR/output_moses"
 if [[ "$USE_MORFESSOR" == "true" ]]; then
   MORFESSOR_DIR="$OUTPUT_DIR/output_morfessor"
   BPE_DIR="$OUTPUT_DIR/output_morfessor_bpe"
-  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_morfessor_bpe"
+  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_morfessor_bpe_${DIRECTION}"
 else
   BPE_DIR="$OUTPUT_DIR/output_bpe"
-  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_bpe"
+  DATA_BIN_DIR="$OUTPUT_DIR/fairseq_bpe_${DIRECTION}"
 fi
 
 # Split files (in original directory)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a neural machine translation (NMT) project for translating between Upper Sorbian (hsb) and German (de) using Facebook's Fairseq framework. The project uses a transformer architecture (IWSLT variant) trained on preprocessed parallel text data.
+This is a bidirectional neural machine translation (NMT) project for translating between Upper Sorbian (hsb) and German (de) using Facebook's Fairseq framework. The project supports both translation directions (hsb↔de) and uses a transformer architecture (IWSLT variant) trained on preprocessed parallel text data.
 
 ## Development Environment Setup
 
@@ -19,8 +19,11 @@ source .venv/bin/activate
 
 ### Data Preprocessing
 ```bash
-./prepare.sh           # BPE-only pipeline: Moses → BPE → Fairseq binary
-./prepare.sh morfessor # Morfessor + BPE pipeline: Moses → Morfessor → BPE → Fairseq binary
+./prepare.sh                    # Default: hsb→de, BPE-only pipeline
+./prepare.sh hsb-de             # Explicit hsb→de direction, BPE-only
+./prepare.sh de-hsb             # German→Sorbian direction, BPE-only
+./prepare.sh hsb-de morfessor   # hsb→de with Morfessor + BPE pipeline
+./prepare.sh de-hsb morfessor   # de→hsb with Morfessor + BPE pipeline
 ```
 
 ### Training
@@ -49,12 +52,14 @@ bash train_morfessor_hsb-de.sh
 
 ### Directory Structure
 - `dataset/original/`: Train/dev/test split files (train.hsb, train.de, etc.)
-- `dataset/output_moses/`: Moses preprocessing output
-- `dataset/output_bpe/`: BPE codes and BPE-only segmented files
-- `dataset/output_morfessor/`: Morfessor models and morphologically segmented files
-- `dataset/output_morfessor_bpe/`: BPE codes and files with Morfessor+BPE segmentation
-- `dataset/fairseq_bpe/`: Binary dataset for BPE-only training
-- `dataset/fairseq_morfessor_bpe/`: Binary dataset for Morfessor+BPE training
+- `dataset/output_moses/`: Moses preprocessing output (shared across directions)
+- `dataset/output_bpe/`: BPE codes and BPE-only segmented files (shared across directions)
+- `dataset/output_morfessor/`: Morfessor models and morphologically segmented files (shared across directions)
+- `dataset/output_morfessor_bpe/`: BPE codes and files with Morfessor+BPE segmentation (shared across directions)
+- `dataset/fairseq_bpe_hsb-de/`: Binary dataset for hsb→de BPE-only training
+- `dataset/fairseq_bpe_de-hsb/`: Binary dataset for de→hsb BPE-only training
+- `dataset/fairseq_morfessor_bpe_hsb-de/`: Binary dataset for hsb→de Morfessor+BPE training
+- `dataset/fairseq_morfessor_bpe_de-hsb/`: Binary dataset for de→hsb Morfessor+BPE training
 - `checkpoints/`: Model checkpoints during training
 - `results/`: Evaluation results and metrics
 - `moses_scripts/`: Perl scripts for text preprocessing
