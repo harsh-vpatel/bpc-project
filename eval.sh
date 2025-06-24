@@ -89,6 +89,9 @@ log "Evaluating $SENTENCE_COUNT sentences..."
 
 log "Step 1/3: Generating translations with fairseq..."
 
+# Map dev to valid for fairseq
+FAIRSEQ_SPLIT=${SPLIT/dev/valid}
+
 # Generate translations
 fairseq-generate "$FAIRSEQ_DATA_DIR" \
   --path "$CHECKPOINT_PATH" \
@@ -97,6 +100,7 @@ fairseq-generate "$FAIRSEQ_DATA_DIR" \
   --target-lang de \
   --arch transformer_iwslt_de_en \
   --tokenizer moses \
+  --gen-subset "$FAIRSEQ_SPLIT" \
   --beam 5 \
   --batch-size 32 \
   --max-len-a 1.2 \

@@ -34,9 +34,9 @@ bash train_morfessor_hsb-de.sh
 
 ### Evaluation
 ```bash
-./eval.sh                                    # Default: BPE model, test set
-./eval.sh sorbian_german_morfessor morfessor # Morfessor model, test set
-./eval.sh sorbian_german_bpe bpe dev         # BPE model, dev set
+./eval.sh                                                       # Default: BPE model, test set
+./eval.sh sorbian_german_morfessor ./dataset/fairseq_morfessor/ # Morfessor model, test set
+./eval.sh sorbian_german_bpe ./dataset/fairseq_bpe/ dev         # BPE model, dev set
 ```
 
 ## Architecture
