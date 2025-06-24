@@ -1,24 +1,42 @@
 #!/bin/bash
 
 # Enhanced evaluation script for NMT models
-# Usage: ./eval.sh [checkpoint_dir] [dataset_type] [split]
+# Usage: ./eval.sh [checkpoint_dir] [dataset_dir] [split] [direction]
 # Examples:
-#   ./eval.sh                                    # Use defaults (bpe, test)
-#   ./eval.sh sorbian_german_morfessor morfessor # Use morfessor model on test
-#   ./eval.sh sorbian_german_bpe bpe dev        # Use BPE model on dev set
+#   ./eval.sh                                                    # Use defaults (bpe, test, hsb-de)
+#   ./eval.sh sorbian_german_bpe ./dataset/fairseq_bpe_hsb-de/   # hsb->de model
+#   ./eval.sh german_sorbian_bpe ./dataset/fairseq_bpe_de-hsb/ test de-hsb # de->hsb model
+#   ./eval.sh sorbian_german_bpe ./dataset/fairseq_bpe_hsb-de/ dev hsb-de  # hsb->de on dev set
 
 set -e # Exit on any error
 
 # Default parameters
 DEFAULT_CHECKPOINT="sorbian_german_bpe"
-DEFAULT_DATASET_DIR="./dataset/fairseq_bpe/"
+DEFAULT_DATASET_DIR="./dataset/fairseq_bpe_hsb-de/"
 DEFAULT_SPLIT="test"
+DEFAULT_DIRECTION="hsb-de"
 MOSES_DIR="dataset/output_moses"
 
 # Parse command line arguments
 CHECKPOINT_DIR=${1:-$DEFAULT_CHECKPOINT}
 FAIRSEQ_DATA_DIR=${2:-$DEFAULT_DATASET_DIR}
 SPLIT=${3:-$DEFAULT_SPLIT}
+DIRECTION=${4:-$DEFAULT_DIRECTION}
+
+# Validate direction argument
+if [[ "$DIRECTION" != "hsb-de" && "$DIRECTION" != "de-hsb" ]]; then
+  echo "Error: Invalid direction '$DIRECTION'. Use 'hsb-de' or 'de-hsb'."
+  exit 1
+fi
+
+# Set source and target languages based on direction
+if [[ "$DIRECTION" == "hsb-de" ]]; then
+  SRC_LANG="hsb"
+  TGT_LANG="de"
+else
+  SRC_LANG="de"
+  TGT_LANG="hsb"
+fi
 
 # Validate paths exist
 CHECKPOINT_PATH="checkpoints/$CHECKPOINT_DIR/checkpoint_best.pt"
@@ -34,9 +52,9 @@ if [ ! -d "$FAIRSEQ_DATA_DIR" ]; then
   exit 1
 fi
 
-# Set reference and source files
-REFERENCES_FILE="$MOSES_DIR/$SPLIT.norm.de"
-SOURCE_FILE="$MOSES_DIR/$SPLIT.norm.hsb"
+# Set reference and source files based on direction
+REFERENCES_FILE="$MOSES_DIR/$SPLIT.norm.$TGT_LANG"
+SOURCE_FILE="$MOSES_DIR/$SPLIT.norm.$SRC_LANG"
 
 if [ ! -f "$REFERENCES_FILE" ]; then
   echo "Error: Reference file not found: $REFERENCES_FILE"
@@ -48,7 +66,7 @@ fi
 # Create results directory and timestamp
 mkdir -p results
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-RESULT_PREFIX="results/eval_${CHECKPOINT_DIR}_${DATASET_TYPE}_${SPLIT}_${TIMESTAMP}"
+RESULT_PREFIX="results/eval_${CHECKPOINT_DIR}_${DIRECTION}_${SPLIT}_${TIMESTAMP}"
 
 # Output files
 OUTPUT_FILE="${RESULT_PREFIX}_full.txt"
@@ -76,7 +94,7 @@ log "==============================================="
 log "       NMT Model Evaluation Report"
 log "==============================================="
 log "Checkpoint: $CHECKPOINT_DIR"
-log "Dataset: $DATASET_TYPE"
+log "Direction: $DIRECTION ($SRC_LANG -> $TGT_LANG)"
 log "Split: $SPLIT"
 log "Timestamp: $TIMESTAMP"
 log "Source file: $SOURCE_FILE"
@@ -96,8 +114,8 @@ FAIRSEQ_SPLIT=${SPLIT/dev/valid}
 fairseq-generate "$FAIRSEQ_DATA_DIR" \
   --path "$CHECKPOINT_PATH" \
   --remove-bpe \
-  --source-lang hsb \
-  --target-lang de \
+  --source-lang "$SRC_LANG" \
+  --target-lang "$TGT_LANG" \
   --arch transformer_iwslt_de_en \
   --tokenizer moses \
   --gen-subset "$FAIRSEQ_SPLIT" \
@@ -174,7 +192,7 @@ else
 fi
 
 # Display summary
-echo "Model: $CHECKPOINT_DIR ($DATASET_TYPE)"
+echo "Model: $CHECKPOINT_DIR ($DIRECTION)"
 echo "Sentences: $SENTENCE_COUNT"
 echo "$BLEU_SCORE"
 echo "$CHRF_SCORE"
