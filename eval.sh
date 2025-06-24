@@ -102,9 +102,10 @@ fairseq-generate "$FAIRSEQ_DATA_DIR" \
   --tokenizer moses \
   --gen-subset "$FAIRSEQ_SPLIT" \
   --beam 5 \
+  --nbest 1 \
   --batch-size 32 \
   --max-len-a 1.2 \
-  --max-len-b 10 | tee "${RESULT_PREFIX}_fairseq_output.txt" | grep "D-" | sort -n -t'-' -k2 | cut -f 3 >"$HYPOTHESES_FILE"
+  --max-len-b 10 | tee "${RESULT_PREFIX}_fairseq_output.txt" | grep "^D-" | sort -n -t'-' -k2 | cut -f 3 >"$HYPOTHESES_FILE"
 
 # Verify generation succeeded
 if [ ! -s "$HYPOTHESES_FILE" ]; then
