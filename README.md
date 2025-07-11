@@ -18,6 +18,7 @@ source .venv/bin/activate
 ./prepare.sh de-hsb             # German→Sorbian direction
 ./prepare.sh hsb-de morfessor   # With Morfessor segmentation
 ./prepare.sh de-hsb morfessor   # Reverse direction with Morfessor
+./prepare.sh hsb-de --mono      # Sorbian→German direction, using additional monolingual training data for bpe
 ```
 
 ## Evaluate a trained model

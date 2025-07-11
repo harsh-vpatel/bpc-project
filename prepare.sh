@@ -1,12 +1,14 @@
 #!/bin/bash
 
-# Usage: ./prepare.sh [direction] [morfessor]
+# Usage: ./prepare.sh [direction] [morfessor] [--mono]
 # Direction: hsb-de (default) or de-hsb
 # Morfessor: Optional, apply Morfessor segmentation before BPE
+# --mono: Optional, use monolingual data for BPE/Morfessor training
 
 # Parse arguments
 DIRECTION=${1:-hsb-de}
 USE_MORFESSOR_ARG=${2:-}
+USE_MONO_ARG=${3:-}
 
 # Validate direction argument
 if [[ "$DIRECTION" != "hsb-de" && "$DIRECTION" != "de-hsb" ]]; then
@@ -45,8 +47,23 @@ MORFESSOR_DAMPING=0.01          # Damping parameter for Morfessor
 MORFESSOR_ALPHA=1.0             # Alpha parameter for Morfessor
 
 # Validate morfessor argument
-if [[ -n "$USE_MORFESSOR_ARG" && "$USE_MORFESSOR_ARG" != "morfessor" ]]; then
+if [[ -n "$USE_MORFESSOR_ARG" && "$USE_MORFESSOR_ARG" != "morfessor" && "$USE_MORFESSOR_ARG" != "--mono" ]]; then
   echo "Error: Invalid morfessor argument '$USE_MORFESSOR_ARG'. Use 'morfessor' or leave empty for BPE-only."
+  exit 1
+fi
+
+# Handle --mono flag in different argument positions
+USE_MONO=false
+if [[ "$USE_MORFESSOR_ARG" == "--mono" ]]; then
+  USE_MONO=true
+  USE_MORFESSOR_ARG=""
+elif [[ "$USE_MONO_ARG" == "--mono" ]]; then
+  USE_MONO=true
+fi
+
+# Validate mono argument
+if [[ -n "$USE_MONO_ARG" && "$USE_MONO_ARG" != "--mono" ]]; then
+  echo "Error: Invalid mono argument '$USE_MONO_ARG'. Use '--mono' or leave empty."
   exit 1
 fi
 
@@ -55,6 +72,11 @@ if [[ "$USE_MORFESSOR" == "true" ]]; then
   echo "Using Morfessor + BPE segmentation pipeline"
 else
   echo "Using BPE-only segmentation pipeline"
+fi
+if [[ "$USE_MONO" == "true" ]]; then
+  echo "Using monolingual data for BPE/Morfessor training"
+else
+  echo "Using training data for BPE/Morfessor training"
 fi
 
 # Directory structure - add direction to final binary dataset
@@ -77,6 +99,9 @@ dev_tgt="$ORIGINAL_DIR/dev.${tgt}"
 test_src="$ORIGINAL_DIR/test.${src}"
 test_tgt="$ORIGINAL_DIR/test.${tgt}"
 
+# Monolingual data file (always Sorbian)
+mono_src="$ORIGINAL_DIR/mono.hsb"
+
 # Create output directories if they don't exist
 if [[ "$USE_MORFESSOR" == "true" ]]; then
   mkdir -p "$ORIGINAL_DIR" "$MOSES_DIR" "$MORFESSOR_DIR" "$BPE_DIR" "$DATA_BIN_DIR"
@@ -94,6 +119,18 @@ for split in train dev test; do
     fi
   done
 done
+
+# Check if monolingual file exists when --mono flag is used
+if [[ "$USE_MONO" == "true" ]]; then
+  if [ ! -f "$mono_src" ]; then
+    echo "Error: Monolingual file $mono_src not found!"
+    exit 1
+  fi
+  if [ ! -s "$mono_src" ]; then
+    echo "Error: Monolingual file $mono_src is empty!"
+    exit 1
+  fi
+fi
 
 # Check dependencies
 if ! command -v subword-nmt &>/dev/null; then
@@ -183,10 +220,22 @@ if [[ "$USE_MORFESSOR" == "true" ]]; then
       echo "Morfessor model for $lang already exists, skipping training..."
     else
       echo "Training Morfessor model for $lang..."
+      
+      # Choose training data based on --mono flag
+      if [[ "$USE_MONO" == "true" && "$lang" == "hsb" ]]; then
+        # Use monolingual data for Sorbian language only
+        TRAINING_DATA="$mono_src"
+        echo "Using monolingual data for $lang Morfessor training"
+      else
+        # Use regular training data
+        TRAINING_DATA="$MOSES_DIR/train.$lang"
+        echo "Using training data for $lang Morfessor training"
+      fi
+      
       morfessor-train \
         -s "$MORFESSOR_DIR/morfessor_model.$lang.bin" \
         -d ones \
-        "$MOSES_DIR/train.$lang"
+        "$TRAINING_DATA"
     fi
   done
 
@@ -240,8 +289,24 @@ if [ ! -s "$TRAIN_SRC_FILE" ] || [ ! -s "$TRAIN_TGT_FILE" ]; then
 fi
 
 # Combine training data and learn BPE
-cat "$TRAIN_SRC_FILE" "$TRAIN_TGT_FILE" >"$BPE_DIR/train_combined.txt"
-echo "Combined training data has $(wc -l <"$BPE_DIR/train_combined.txt") lines"
+if [[ "$USE_MONO" == "true" ]]; then
+  # Use monolingual data for BPE training
+  echo "Using monolingual data for BPE training"
+  # Always combine mono.hsb with German training data
+  if [[ "$DIRECTION" == "hsb-de" ]]; then
+    # For hsb->de: mono.hsb + German training data
+    cat "$mono_src" "$TRAIN_TGT_FILE" >"$BPE_DIR/train_combined.txt"
+  else
+    # For de->hsb: mono.hsb + German training data
+    cat "$mono_src" "$TRAIN_SRC_FILE" >"$BPE_DIR/train_combined.txt"
+  fi
+  echo "Combined data (monolingual Sorbian + German training) has $(wc -l <"$BPE_DIR/train_combined.txt") lines"
+else
+  # Use regular training data
+  echo "Using training data for BPE training"
+  cat "$TRAIN_SRC_FILE" "$TRAIN_TGT_FILE" >"$BPE_DIR/train_combined.txt"
+  echo "Combined training data has $(wc -l <"$BPE_DIR/train_combined.txt") lines"
+fi
 
 # Learn BPE with minimum frequency threshold
 subword-nmt learn-bpe -s $BPE_OPERATIONS --min-frequency 2 <"$BPE_DIR/train_combined.txt" >"$BPE_DIR/bpe.codes"
