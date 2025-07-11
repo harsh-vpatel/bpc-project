@@ -100,6 +100,7 @@ test_src="$ORIGINAL_DIR/test.${src}"
 test_tgt="$ORIGINAL_DIR/test.${tgt}"
 
 # Monolingual data file (always Sorbian)
+mono_src_gz="$ORIGINAL_DIR/mono.hsb.gz"
 mono_src="$ORIGINAL_DIR/mono.hsb"
 
 # Create output directories if they don't exist
@@ -122,8 +123,15 @@ done
 
 # Check if monolingual file exists when --mono flag is used
 if [[ "$USE_MONO" == "true" ]]; then
-  if [ ! -f "$mono_src" ]; then
-    echo "Error: Monolingual file $mono_src not found!"
+  if [ -f "$mono_src_gz" ]; then
+    echo "Found gzipped monolingual file, decompressing..."
+    gunzip -c "$mono_src_gz" > "$mono_src"
+    if [ $? -ne 0 ]; then
+      echo "Error: Failed to decompress $mono_src_gz"
+      exit 1
+    fi
+  elif [ ! -f "$mono_src" ]; then
+    echo "Error: Monolingual file $mono_src or $mono_src_gz not found!"
     exit 1
   fi
   if [ ! -s "$mono_src" ]; then
