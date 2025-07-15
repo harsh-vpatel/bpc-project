@@ -268,7 +268,7 @@ if [[ "$USE_RNN_TAGGER" == "true" ]]; then
       bash "${RNN_SCRIPT}" "../$MOSES_DIR/$split.clean.$lang" >"../$RNN_DIR/$split.rnn.$lang"
       cd ..
 
-      sed -i -e ':a' -e 'N' -e '$!ba' -e 's/\n\n/\x00/g' -e 's/\n//g' -e 's/\x00/\n/g' "../$RNN_DIR/$split.rnn.$lang"
+      sed -i -e ':a' -e 'N' -e '$!ba' -e 's/\n\n/\x00/g' -e 's/\n//g' -e 's/\x00/\n/g' "$RNN_DIR/$split.rnn.$lang"
       # Check if RNN-Tagger output is valid
       if [ ! -s "$RNN_DIR/$split.rnn.$lang" ]; then
         echo "Error: RNN-Tagger output for $split.$lang is empty!"
