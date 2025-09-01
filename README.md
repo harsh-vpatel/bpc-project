@@ -1,3 +1,5 @@
+Work of Harshvardhan Patel, Sebastian Ehmanns, and Nils Imdahl under the supervision of Marion Di Marco
+
 # BPC Project
 
 Bidirectional neural machine translation between Upper Sorbian (hsb) and German (de) using Fairseq.
